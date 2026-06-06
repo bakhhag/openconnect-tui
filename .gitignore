@@ -1,0 +1,85 @@
+# ##########################
+# Go Binaries and Build Artifacts
+# ##########################
+# Compiled applications
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries compiled by 'go test'
+*.test
+
+# Output of the go coverage tool, consumed by entering 'go tool cover'
+*.out
+*.prof
+*.test
+c.out
+
+# Common build directories (if you build into a local bin/ or dist/ folder)
+/bin/
+/dist/
+
+# ##########################
+# Dependency Management
+# ##########################
+# Godeps old school dependency tool
+/Godeps/
+
+# NOTE: Do NOT ignore go.mod and go.sum. They should be committed.
+# If you vendor your dependencies, uncomment the line below:
+# /vendor/
+
+# ##########################
+# Development Tools & IDEs
+# ##########################
+# JetBrains (GoLand, IntelliJ, WebStorm, etc.)
+.idea/
+*.iml
+*.iws
+
+# Visual Studio Code
+.vscode/
+!.vscode/extensions.json
+*.code-workspace
+
+# Vim / Emacs
+*~
+.*.swp
+.sw?
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list/
+tramp
+.\#*
+
+# ##########################
+# Environment & Secrets
+# ##########################
+# Local environment files containing API keys, passwords, etc.
+.env
+.env.*
+!.env.example
+.dotenv
+
+# ##########################
+# Operating System Specific
+# ##########################
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.fuse_hidden*
+.directory
