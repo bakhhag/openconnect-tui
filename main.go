@@ -4,29 +4,56 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+type Choice struct {
+	Option int
+	Name   string
+}
+
+type focusArea int
+
+const (
+	focusOptionBar focusArea = iota
+	focusInput
+	focusIPList
+)
+
 var (
-	activeTabStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4")).
-			Padding(0, 0).
-			Width(30)
-		// UnsetBorderTop()
-	inactiveTabStyle = lipgloss.NewStyle().
+	activeOptionsTabStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("#7D56F4")).
+				Padding(0, 1).
+				Width(10).
+				Height(8)
+	inactiveOptionsTabStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("#3C3C3C")).
-				Padding(0, 0).
-				Width(20)
+				Padding(0, 1).
+				Width(10).
+				Height(8)
+	activeSettingsTabStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("#7D56F4")).
+				Padding(0, 1).
+				Width(30).
+				Height(8)
+	inactiveSettingsTabStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("#3C3C3C")).
+					Padding(0, 1).
+					Width(30).
+					Height(8)
 
 	// Active column style: purple border and highlighted header
-	tabNames = map[int]string{
+	choices = map[int]string{
 		0: "connect",
 		1: "dig",
-		2: "settings",
 	}
+	choicesLen = len(choices)
 	// Text highlights
 	activeHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
 )
@@ -34,12 +61,23 @@ var (
 type model struct {
 	activeTab    int
 	activeOption int
+	activeChoice int
+	focus        focusArea
+	textInput    textinput.Model
 }
 
 func initialModel() model {
+
+	ti := textinput.New()
+	ti.Placeholder = "example.com"
+	ti.CharLimit = 100
+	ti.Width = 25
+
 	return model{
 		activeTab:    0,
 		activeOption: 0,
+		activeChoice: 0,
+		textInput:    ti,
 	}
 }
 
@@ -49,6 +87,8 @@ func (m model) Init() tea.Cmd {
 
 // 2. Handle key presses
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -58,42 +98,85 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Tab moves to the next column
 		case "tab":
 			m.activeTab = (m.activeTab + 1) % 2
+			m.activeChoice = 0
 
 		// Shift+Tab moves to the previous column
 		case "shift+tab":
 			m.activeTab = (m.activeTab - 1 + 2) % 2
-		case "down":
-			m.activeOption = (m.activeOption + 1) % 3
-		case "up":
-			m.activeOption = (m.activeOption - 1 + 3) % 3
+			m.activeChoice = 0
 		}
+		switch m.focus {
+		case focusOptionBar:
+			switch msg.String() {
+			case "down":
+				m.activeOption = (m.activeOption + 1) % choicesLen
+
+			case "up":
+				m.activeOption = (m.activeOption - 1 + choicesLen) % choicesLen
+			case "tab":
+				if m.activeOption == 1 {
+					m.focus = focusInput
+					m.textInput.Focus()
+					return m, textinput.Blink
+				}
+			}
+		case focusInput:
+			switch msg.String() {
+			case "tab":
+				m.focus = focusOptionBar
+			}
+		}
+
 	}
-	return m, nil
+	if m.focus == focusInput {
+		m.textInput, cmd = m.textInput.Update(msg)
+	}
+	return m, cmd
 }
 
 // 3. Render the columns horizontally
 func (m model) View() string {
-	var renderedTabs [3]string
+	// var choicesLength = len(choices)
+	var renderedTabs = make([]string, choicesLen)
 	var renderedCols [2]string
 	var content string
 	for i := 0; i < 2; i++ {
 		// 2. Wrap the column string in either the active or inactive border style
 		if i == 0 {
-			for ind := 0; ind < 3; ind++ {
+			for ind := 0; ind < choicesLen; ind++ {
+
 				if ind == m.activeOption {
-					renderedTabs[ind] = activeHeaderStyle.Render(tabNames[ind])
+					renderedTabs[ind] = activeHeaderStyle.Render(choices[ind])
 				} else {
-					renderedTabs[ind] = tabNames[ind]
+					renderedTabs[ind] = choices[ind]
 				}
 			}
-			content = lipgloss.JoinVertical(lipgloss.Top, renderedTabs[0], renderedTabs[1], renderedTabs[2])
+			content = lipgloss.JoinVertical(lipgloss.Left, renderedTabs...)
 		} else {
-			content = ""
+			if m.activeOption == 0 {
+				content = ""
+			} else if m.activeOption == 1 {
+				var parts []string
+				parts = append(parts, "DNS Lookup Tool")
+
+				// Domain input box
+				parts = append(parts, "\nDomain Name:\n"+m.textInput.View())
+
+				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
+			}
 		}
-		if i == m.activeTab {
-			renderedCols[i] = activeTabStyle.Render(content)
-		} else {
-			renderedCols[i] = inactiveTabStyle.Render(content)
+		if i == 0 {
+			if i == m.activeTab {
+				renderedCols[i] = activeOptionsTabStyle.Render(content)
+			} else {
+				renderedCols[i] = inactiveOptionsTabStyle.Render(content)
+			}
+		} else if i == 1 {
+			if i == m.activeTab {
+				renderedCols[i] = activeSettingsTabStyle.Render(content)
+			} else {
+				renderedCols[i] = inactiveSettingsTabStyle.Render(content)
+			}
 		}
 	}
 

@@ -20,7 +20,8 @@ c.out
 # Common build directories (if you build into a local bin/ or dist/ folder)
 /bin/
 /dist/
-
+/ai/
+/sandbox/
 # ##########################
 # Dependency Management
 # ##########################
