@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -23,6 +24,7 @@ const (
 	focusOptionBar focusArea = iota
 	focusInput
 	focusIPList
+	focusFlagList
 )
 
 var (
@@ -50,31 +52,41 @@ var (
 					Padding(0, 1).
 					Width(30).
 					Height(8)
-	onIpStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#9170f3"))
+	onIpStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#9170f3"))
+	nilDomainStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fa5a5a"))
+	selDomainStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#a891f0"))
 
-	// Active column style: purple border and highlighted header
-	choices = map[int]string{
+	activeHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+	activeFlagStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#2cdb6f"))
+	inactiveFlagStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7e7e7e"))
+	onFlagStyle       = lipgloss.NewStyle().Bold(true)
+	gap               = strings.Repeat(" ", 4)
+	choices           = map[int]string{
 		0: "connect",
 		1: "dig",
+		2: "flags",
+		3: "settings",
 	}
-	choicesLen = len(choices)
-	// Text highlights
-	activeHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+	choicesLen             = len(choices)
+	initialFlags, flagsLen = loadFlags()
 )
 
 type model struct {
-	spinner      spinner.Model
-	activeTab    int
-	activeOption int
-	activeChoice int
-	activeIP     int
-	activeIPLen  int
-	selectedIP   string
-	focus        focusArea
-	textInput    textinput.Model
-	digErr       error
-	digIPs       []string
-	digIsLoading bool
+	spinner        spinner.Model
+	activeTab      int
+	activeOption   int
+	activeChoice   int
+	activeIP       int
+	activeIPLen    int
+	activeFlag     int
+	selectedIP     string
+	selectedDomain string
+	focus          focusArea
+	textInput      textinput.Model
+	digErr         error
+	digIPs         []string
+	digIsLoading   bool
+	flags          []FlagRow
 }
 
 func initialModel() model {
@@ -88,12 +100,16 @@ func initialModel() model {
 	s.Spinner = spinner.Meter
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4"))
 	return model{
-		activeTab:    0,
-		activeOption: 0,
-		activeChoice: 0,
-		activeIP:     0,
-		textInput:    ti,
-		spinner:      s,
+		activeTab:      0,
+		activeOption:   0,
+		activeChoice:   0,
+		activeIP:       0,
+		activeFlag:     0,
+		selectedIP:     "",
+		selectedDomain: "",
+		textInput:      ti,
+		spinner:        s,
+		flags:          initialFlags,
 	}
 }
 
@@ -158,8 +174,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.focus = focusInput
 					m.textInput.Focus()
 					return m, textinput.Blink
+				} else if m.activeOption == 2 {
+					m.focus = focusFlagList
 				}
 
+			}
+		case focusFlagList:
+			switch msg.String() {
+			case "down":
+				m.activeFlag = (m.activeFlag + 1) % flagsLen
+			case "up":
+				m.activeFlag = (m.activeFlag - 1 + flagsLen) % flagsLen
+			case "tab":
+				m.activeFlag = 0
+				// run saveFlags here
+				// add saving loading screen later
+
+				m.focus = focusOptionBar
+				return m, saveFlagsCmd(m.flags)
+			case "enter":
+				if m.flags[m.activeFlag].Selected == "0" {
+					setFlag(m.flags, m.activeFlag, true)
+				} else {
+					setFlag(m.flags, m.activeFlag, false)
+
+				}
 			}
 		case focusInput:
 			switch msg.String() {
@@ -191,6 +230,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeIP = (m.activeIP - 1 + m.activeIPLen) % m.activeIPLen
 			case "enter":
 				m.selectedIP = m.digIPs[m.activeIP]
+				m.selectedDomain = m.textInput.Value()
 				m.activeOption = 0
 			}
 
@@ -234,10 +274,17 @@ func (m model) View() string {
 			}
 			content = lipgloss.JoinVertical(lipgloss.Left, renderedTabs...)
 		} else {
-			if m.activeOption == 0 {
-				content = ""
-			} else if m.activeOption == 1 {
-				var parts []string
+			var parts []string
+			switch m.activeOption {
+			case 0:
+				if m.selectedDomain != "" {
+					parts = append(parts, "Server:", selDomainStyle.Render(m.selectedDomain), "IP:", selDomainStyle.Render(m.selectedIP))
+				} else {
+					parts = append(parts, "Server:", nilDomainStyle.Render("Select via 'dig' tab."))
+				}
+				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
+
+			case 1:
 				parts = append(parts, "DNS Lookup Tool")
 
 				// Domain input box
@@ -259,6 +306,27 @@ func (m model) View() string {
 					}
 				}
 				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
+			case 2:
+				var upperThresh int
+				upperThresh = m.activeFlag + 8
+				if upperThresh > flagsLen {
+					upperThresh = flagsLen
+				}
+				for i := m.activeFlag; i < upperThresh; i++ {
+					if m.flags[i].Selected == "1" {
+						parts = append(parts, activeFlagStyle.Render(m.flags[i].Flag))
+					} else if m.flags[i].Selected == "0" && i == m.activeFlag {
+						parts = append(parts, onFlagStyle.Render(m.flags[i].Flag))
+					} else {
+						parts = append(parts, inactiveFlagStyle.Render(m.flags[i].Flag))
+
+					}
+				}
+
+				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
+
+			default:
+				content = ""
 			}
 		}
 		if i == 0 {
