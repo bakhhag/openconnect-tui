@@ -16,6 +16,7 @@ var (
 type FlagRow struct {
 	Flag     string
 	Selected string
+	Value    string
 }
 
 func loadFlags() ([]FlagRow, int) {
@@ -36,9 +37,9 @@ func loadFlags() ([]FlagRow, int) {
 	for _, record := range records {
 		// fmt.Println(record)
 		if record[1] == "0" {
-			flagRecords = append(flagRecords, FlagRow{Flag: record[0], Selected: "0"})
+			flagRecords = append(flagRecords, FlagRow{Flag: record[0], Selected: "0", Value: record[2]})
 		} else {
-			flagRecords = append(flagRecords, FlagRow{Flag: record[0], Selected: "1"})
+			flagRecords = append(flagRecords, FlagRow{Flag: record[0], Selected: "1", Value: record[2]})
 
 		}
 

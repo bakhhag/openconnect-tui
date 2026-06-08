@@ -25,6 +25,7 @@ const (
 	focusInput
 	focusIPList
 	focusFlagList
+	focusFlagModal
 )
 
 var (
@@ -52,6 +53,13 @@ var (
 					Padding(0, 1).
 					Width(30).
 					Height(8)
+	setFlagModalStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("#F25D94")).
+				Padding(1, 3).
+				Width(40).
+				Height(5).
+				Align(lipgloss.Center, lipgloss.Center)
 	onIpStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#9170f3"))
 	nilDomainStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fa5a5a"))
 	selDomainStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#a891f0"))
@@ -193,7 +201,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = focusOptionBar
 				return m, saveFlagsCmd(m.flags)
 			case "enter":
-				if m.flags[m.activeFlag].Selected == "0" {
+				var selectedFlag = m.flags[m.activeFlag]
+				if selectedFlag.Selected == "0" {
+					// if strings.HasSuffix(selectedFlag.Flag , "="){
+
+					// }
 					setFlag(m.flags, m.activeFlag, true)
 				} else {
 					setFlag(m.flags, m.activeFlag, false)
@@ -231,6 +243,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				m.selectedIP = m.digIPs[m.activeIP]
 				m.selectedDomain = m.textInput.Value()
+				m.textInput.Reset()
+				clear(m.digIPs)
 				m.activeOption = 0
 			}
 
