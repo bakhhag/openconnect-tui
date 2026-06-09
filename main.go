@@ -55,11 +55,10 @@ var (
 					Height(8)
 	setFlagModalStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#F25D94")).
-				Padding(1, 3).
-				Width(40).
-				Height(5).
-				Align(lipgloss.Center, lipgloss.Center)
+				BorderForeground(lipgloss.Color("#7D56F4")).
+				Padding(0, 1).
+				Width(20).
+				Height(3)
 	onIpStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#9170f3"))
 	nilDomainStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fa5a5a"))
 	selDomainStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#a891f0"))
@@ -157,6 +156,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 
 		case "ctrl+c", "q":
+			// TODO : save flags.csv on quit
 			return m, tea.Quit
 
 		// Tab moves to the next column
@@ -195,7 +195,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeFlag = (m.activeFlag - 1 + flagsLen) % flagsLen
 			case "tab":
 				m.activeFlag = 0
-				// run saveFlags here
 				// add saving loading screen later
 
 				m.focus = focusOptionBar
@@ -203,13 +202,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				var selectedFlag = m.flags[m.activeFlag]
 				if selectedFlag.Selected == "0" {
-					// if strings.HasSuffix(selectedFlag.Flag , "="){
-
-					// }
-					setFlag(m.flags, m.activeFlag, true)
+					if strings.HasSuffix(selectedFlag.Flag, "=") {
+						m.focus = focusFlagModal
+						m.activeTab = 2
+						m.textInput.Focus()
+						return m, textinput.Blink
+					} else {
+						setFlagSelected(m.flags, m.activeFlag, true)
+					}
 				} else {
-					setFlag(m.flags, m.activeFlag, false)
-
+					setFlagSelected(m.flags, m.activeFlag, false)
+					if selectedFlag.Value != "" {
+						setFlagValue(m.flags, m.activeFlag, "")
+					}
 				}
 			}
 		case focusInput:
@@ -247,6 +252,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				clear(m.digIPs)
 				m.activeOption = 0
 			}
+		case focusFlagModal:
+			switch msg.String() {
+			case "tab":
+				m.focus = focusFlagList
+				m.activeTab = 1
+				m.textInput.Reset()
+				m.textInput.Blur()
+			case "enter":
+				setFlagValue(m.flags, m.activeFlag, m.textInput.Value())
+				setFlagSelected(m.flags, m.activeFlag, true)
+				m.focus = focusFlagList
+				m.activeTab = 1
+				m.textInput.Reset()
+				m.textInput.Blur()
+				return m, saveFlagsCmd(m.flags)
+
+			}
 
 		}
 	case digResult:
@@ -263,7 +285,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focus = focusIPList
 		}
 	}
-	if m.focus == focusInput {
+	if m.focus == focusInput || m.focus == focusFlagModal {
 		m.textInput, cmd = m.textInput.Update(msg)
 	}
 	return m, cmd
@@ -273,7 +295,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	// var choicesLength = len(choices)
 	var renderedTabs = make([]string, choicesLen)
-	var renderedCols [2]string
+	var renderedCols = make([]string, 3)
 	var content string
 	for i := 0; i < 2; i++ {
 		// 2. Wrap the column string in either the active or inactive border style
@@ -328,7 +350,13 @@ func (m model) View() string {
 				}
 				for i := m.activeFlag; i < upperThresh; i++ {
 					if m.flags[i].Selected == "1" {
-						parts = append(parts, activeFlagStyle.Render(m.flags[i].Flag))
+						var flagString string
+						if strings.HasSuffix(m.flags[i].Flag, "=") {
+							flagString = m.flags[i].Flag + m.flags[i].Value
+						} else {
+							flagString = m.flags[i].Flag
+						}
+						parts = append(parts, activeFlagStyle.Render(flagString))
 					} else if m.flags[i].Selected == "0" && i == m.activeFlag {
 						parts = append(parts, onFlagStyle.Render(m.flags[i].Flag))
 					} else {
@@ -357,9 +385,15 @@ func (m model) View() string {
 			}
 		}
 	}
-
+	if m.focus == focusFlagModal {
+		var modalParts []string
+		title := fmt.Sprintf("set --%s :\n", m.flags[m.activeFlag].Flag)
+		modalParts = append(modalParts, title, m.textInput.View())
+		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
+		renderedCols[2] = setFlagModalStyle.Render(modalContent)
+	}
 	// 3. Join the three styled column boxes horizontally
-	ui := lipgloss.JoinHorizontal(lipgloss.Top, renderedCols[0], renderedCols[1])
+	ui := lipgloss.JoinHorizontal(lipgloss.Top, renderedCols...)
 
 	return "\n" + ui + "\n\nPress Tab to switch columns | q to quit\n"
 }

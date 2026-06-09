@@ -50,7 +50,7 @@ func loadFlags() ([]FlagRow, int) {
 	return flagRecords, len(flagRecords)
 }
 
-func setFlag(records []FlagRow, index int, set bool) {
+func setFlagSelected(records []FlagRow, index int, set bool) {
 	if set {
 		records[index].Selected = "1"
 	} else {
@@ -61,17 +61,20 @@ func setFlag(records []FlagRow, index int, set bool) {
 	})
 }
 
+func setFlagValue(records []FlagRow, index int, value string) {
+	records[index].Value = value
+}
 func saveFlagsCmd(records []FlagRow) tea.Cmd {
 	return func() tea.Msg {
 		file, _ := os.Create("flags.csv")
 		defer file.Close()
 		writer := csv.NewWriter(file)
 		defer writer.Flush()
-		header := []string{"flag", "selected"}
+		header := []string{"flag", "selected", "value"}
 		writer.Write(header)
 
 		for _, record := range records {
-			row := []string{record.Flag, record.Selected}
+			row := []string{record.Flag, record.Selected, record.Value}
 			writer.Write(row)
 		}
 		return saveFinishedMsg{}
