@@ -17,7 +17,13 @@ type Choice struct {
 	Option int
 	Name   string
 }
+type vpnLogMsg string
+type vpnStatusMsg string
 
+// OFF = 0
+// CONNECTED = 1
+// CONNECTING = 2
+// ERROR = other
 type focusArea int
 
 const (
@@ -26,6 +32,7 @@ const (
 	focusIPList
 	focusFlagList
 	focusFlagModal
+	focusConnect
 )
 
 var (
@@ -59,6 +66,16 @@ var (
 				Padding(0, 1).
 				Width(20).
 				Height(3)
+
+	vpnStatusStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			Padding(0, 1).
+			Width(20).
+			Height(3)
+	vpnConnectedStyle    = vpnStatusStyle.BorderForeground(lipgloss.Color("#2cdb6f"))
+	vpnConnectingStyle   = vpnStatusStyle.BorderForeground(lipgloss.Color("#FFA500"))
+	vpnDisconnectedStyle = vpnStatusStyle.BorderForeground(lipgloss.Color("#3C3C3C"))
+
 	onIpStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#9170f3"))
 	nilDomainStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fa5a5a"))
 	selDomainStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#a891f0"))
@@ -76,6 +93,8 @@ var (
 	}
 	choicesLen             = len(choices)
 	initialFlags, flagsLen = loadFlags()
+
+	programInstance *tea.Program
 )
 
 type model struct {
@@ -94,9 +113,17 @@ type model struct {
 	digIPs         []string
 	digIsLoading   bool
 	flags          []FlagRow
+
+	vpnConnecting bool
+	vpnStatus     string
+	vpnLogs       []string
+	stopChan      chan struct{}
+	doneChan      chan struct{}
+
+	program *tea.Program
 }
 
-func initialModel() model {
+func initialModel() *model {
 
 	ti := textinput.New()
 	ti.Placeholder = "example.com"
@@ -106,7 +133,7 @@ func initialModel() model {
 	s := spinner.New()
 	s.Spinner = spinner.Meter
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4"))
-	return model{
+	return &model{
 		activeTab:      0,
 		activeOption:   0,
 		activeChoice:   0,
@@ -117,10 +144,12 @@ func initialModel() model {
 		textInput:      ti,
 		spinner:        s,
 		flags:          initialFlags,
+		vpnConnecting:  false,
+		vpnStatus:      "0",
 	}
 }
 
-func (m model) Init() tea.Cmd {
+func (m *model) Init() tea.Cmd {
 	return nil
 }
 
@@ -143,10 +172,14 @@ func dig(domain string) tea.Cmd {
 		return digResult{ips: ipStrings}
 	}
 }
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case vpnStatusMsg:
+		m.vpnStatus = string(msg)
+		return m, nil
+
 	case spinner.TickMsg:
 		if m.digIsLoading {
 			m.spinner, cmd = m.spinner.Update(msg)
@@ -159,12 +192,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// TODO : save flags.csv on quit
 			return m, tea.Quit
 
-		// Tab moves to the next column
 		case "tab":
 			m.activeTab = (m.activeTab + 1) % 2
 			m.activeChoice = 0
 
-		// Shift+Tab moves to the previous column
 		case "shift+tab":
 			m.activeTab = (m.activeTab - 1 + 2) % 2
 			m.activeChoice = 0
@@ -178,11 +209,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "up":
 				m.activeOption = (m.activeOption - 1 + choicesLen) % choicesLen
 			case "tab":
-				if m.activeOption == 1 {
+				switch m.activeOption {
+				case 0:
+					m.focus = focusConnect
+				case 1:
 					m.focus = focusInput
 					m.textInput.Focus()
 					return m, textinput.Blink
-				} else if m.activeOption == 2 {
+				case 2:
 					m.focus = focusFlagList
 				}
 
@@ -251,7 +285,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textInput.Reset()
 				clear(m.digIPs)
 				m.activeOption = 0
+				m.focus = focusConnect
 			}
+		case focusConnect:
+			switch msg.String() {
+			case "tab":
+				m.focus = focusOptionBar
+				m.activeTab = 0
+			case "enter":
+
+				if m.selectedIP != "" {
+					if m.vpnConnecting == false {
+						m.stopChan = make(chan struct{})
+						m.doneChan = make(chan struct{})
+						m.vpnConnecting = true
+						go openconnect(m.program, m.stopChan, m.doneChan, m.selectedIP, m.flags)
+					} else {
+						if m.stopChan != nil {
+							close(m.stopChan)
+							m.vpnConnecting = false
+
+						}
+					}
+				} else {
+					m.activeOption = 1
+					m.focus = focusInput
+					m.textInput.Focus()
+					return m, textinput.Blink
+				}
+			}
+
 		case focusFlagModal:
 			switch msg.String() {
 			case "tab":
@@ -284,6 +347,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textInput.Blur()
 			m.focus = focusIPList
 		}
+
 	}
 	if m.focus == focusInput || m.focus == focusFlagModal {
 		m.textInput, cmd = m.textInput.Update(msg)
@@ -291,14 +355,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// 3. Render the columns horizontally
-func (m model) View() string {
-	// var choicesLength = len(choices)
+func (m *model) View() string {
 	var renderedTabs = make([]string, choicesLen)
 	var renderedCols = make([]string, 3)
 	var content string
 	for i := 0; i < 2; i++ {
-		// 2. Wrap the column string in either the active or inactive border style
 		if i == 0 {
 			for ind := 0; ind < choicesLen; ind++ {
 
@@ -323,7 +384,6 @@ func (m model) View() string {
 			case 1:
 				parts = append(parts, "DNS Lookup Tool")
 
-				// Domain input box
 				parts = append(parts, "\nDomain Name:\n"+m.textInput.View())
 				if m.digIsLoading {
 					parts = append(parts, "\n"+m.spinner.View()+" Retrieving IPs")
@@ -391,29 +451,46 @@ func (m model) View() string {
 		modalParts = append(modalParts, title, m.textInput.View())
 		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
 		renderedCols[2] = setFlagModalStyle.Render(modalContent)
+	} else if m.focus == focusConnect {
+		var modalParts []string
+		var statusStyle lipgloss.Style
+		var title string
+		title = fmt.Sprintf("state : %s", m.vpnStatus)
+		switch m.vpnStatus {
+		case "0":
+			statusStyle = vpnDisconnectedStyle
+			title = "state : Disconnected"
+		case "1":
+			statusStyle = vpnConnectedStyle
+			title = "state : Connected"
+		case "2":
+			statusStyle = vpnConnectingStyle
+			title = "state : Connecting"
+		default:
+			statusStyle = vpnDisconnectedStyle
+			title = "state : Disconnected"
+		}
+
+		modalParts = append(modalParts, title)
+		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
+		renderedCols[2] = statusStyle.Render(modalContent)
 	}
-	// 3. Join the three styled column boxes horizontally
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, renderedCols...)
 
 	return "\n" + ui + "\n\nPress Tab to switch columns | q to quit\n"
 }
 
 func main() {
-	p := tea.NewProgram(initialModel())
+	if !amIAdmin() {
+		runAsAdmin()
+		return
+	}
+	m := initialModel()
+	p := tea.NewProgram(m)
+
+	m.program = p
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
 		os.Exit(1)
 	}
 }
-
-// func main() {
-
-// 	cmd := exec.Command("openconnects", "--version")
-
-// 	output, err := cmd.CombinedOutput()
-
-// 	if err != nil {
-// 		fmt.Printf("%v", err)
-// 	}
-// 	fmt.Printf(string(output))
-// }

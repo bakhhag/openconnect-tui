@@ -12,6 +12,8 @@ import (
 
 	"github.com/joho/godotenv"
 	"golang.org/x/sys/windows"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func amIAdmin() bool {
@@ -61,28 +63,45 @@ func runAsAdmin() {
 	os.Exit(0)
 }
 
-func openconnect(stopChan <-chan struct{}) {
+func openconnect(p *tea.Program, stopChan <-chan struct{}, doneChan chan<- struct{}, ip string, flags []FlagRow) {
+	defer close(doneChan)
 	var err = godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	OC_USER := os.Getenv("OC_USER")
-	OC_PASS := os.Getenv("OC_PASS")
-	cmd := exec.Command("openconnect", "fr.securetunnels.net:22", "-u", OC_USER)
+	var OC_USER string = os.Getenv("OC_USER")
+	var OC_PASS string = os.Getenv("OC_PASS")
+	var TARGET_IP string = ip + ":22"
+	var SELECTED_FLAGS []string
+	for _, flag := range flags {
+		if flag.Selected == "1" {
+			if strings.HasSuffix(flag.Flag, "=") {
+				SELECTED_FLAGS = append(SELECTED_FLAGS, "--"+flag.Flag+flag.Value)
+			} else {
+				SELECTED_FLAGS = append(SELECTED_FLAGS, "--"+flag.Flag)
+			}
+		}
+	}
+	oc_args := []string{TARGET_IP, "-u", OC_USER}
+	oc_args = append(oc_args, SELECTED_FLAGS...)
+	cmd := exec.Command("openconnect", oc_args...)
 	stdout, _ := cmd.StdoutPipe()
 	stdin, _ := cmd.StdinPipe()
 	cmd.Stderr = cmd.Stdout
 	configureSysProcAttr(cmd)
 	if err := cmd.Start(); err != nil {
-		log.Fatalf("failed to start: %v", err)
+		p.Send(vpnStatusMsg(fmt.Sprintf("Error starting process: %v", err)))
+		// log.Fatal("Error starting process: %v", err)
+		return
 	}
 
+	p.Send(vpnStatusMsg("2"))
 	go func() {
 		<-stopChan
-		fmt.Println("\n[Go]: Stop signal received. Attempting graceful shutdown...")
+		// fmt.Println("\n[Go]: Stop signal received. Attempting graceful shutdown...")
 		err := interruptProcess(cmd)
 		if err != nil {
-			fmt.Printf("Error during graceful shutdown: %v\n", err)
+			// fmt.Printf("Error during graceful shutdown: %v\n", err)
 			_ = cmd.Process.Kill()
 		}
 	}()
@@ -94,18 +113,21 @@ func openconnect(stopChan <-chan struct{}) {
 		n, err := stdout.Read(buf)
 		if n > 0 {
 			chunk := string(buf[:n])
-			fmt.Print(chunk)
+			p.Send(vpnLogMsg(chunk))
 
 			accumulatedOutput += chunk
 
 			if strings.Contains(accumulatedOutput, "Server certificate verify failed: signer not found") {
-				fmt.Println("\n[Go]: Prompt detected! Sending 'yes'...")
+				// fmt.Println("\n[Go]: Prompt detected! Sending 'yes'...")
 				io.WriteString(stdin, "yes\n")
 				accumulatedOutput = ""
 			} else if strings.Contains(accumulatedOutput, "Password:") {
-				fmt.Println("\n[Go]: Prompt detected! Sending password...")
+				// fmt.Println("\n[Go]: Prompt detected! Sending password...")
 				var pass_prompt = OC_PASS + "\n"
 				io.WriteString(stdin, pass_prompt)
+				accumulatedOutput = ""
+			} else if strings.Contains(accumulatedOutput, "Legacy IP route configuration done.") {
+				p.Send(vpnStatusMsg("1"))
 				accumulatedOutput = ""
 			}
 		}
@@ -118,6 +140,7 @@ func openconnect(stopChan <-chan struct{}) {
 		}
 	}
 	cmd.Wait()
+	p.Send(vpnStatusMsg("0"))
 }
 
 func configureSysProcAttr(cmd *exec.Cmd) {
