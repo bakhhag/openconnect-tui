@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -35,6 +34,7 @@ const (
 	focusConnect
 	focusProfile
 	focusProfileCreate
+	focusTmpProfileCreate
 )
 
 var (
@@ -109,21 +109,25 @@ var (
 type model struct {
 	spinner spinner.Model
 
-	activeTab       int
-	activeOption    int
-	activeChoice    int
-	activeIP        int
-	activeIPLen     int
-	activeFlag      int
-	activeProfile   int
-	activeProfileTi int
-	selectedIP      string
-	selectedDomain  string
+	activeTab          int
+	activeOption       int
+	activeChoice       int
+	activeIP           int
+	activeIPLen        int
+	activeFlag         int
+	activeProfile      int
+	activeProfileTi    int
+	activeTmpProfileTi int
+
+	selectedIP     string
+	selectedDomain string
+	sv             *SelectedServer
 
 	focus focusArea
 
-	textInput    textinput.Model
-	profileInput []*textinput.Model
+	textInput       textinput.Model
+	profileInput    []*textinput.Model
+	tmpProfileInput []*textinput.Model
 
 	digErr       error
 	digIPs       []string
@@ -174,29 +178,50 @@ func initialModel() *model {
 		// t.Prompt = ""
 		pi[i] = &t
 	}
+	tpi := make([]*textinput.Model, 3)
+	for i := range tpi {
+		t := textinput.New()
+		t.CharLimit = 50
+		switch i {
+		case 0:
+			t.Placeholder = "Port"
+			t.Focus()
+		case 1:
+			t.Placeholder = "Username"
+		case 2:
+			t.Placeholder = "Password"
+			t.EchoMode = textinput.EchoPassword
+			t.EchoCharacter = '•'
+		}
+		// t.Prompt = ""
+		tpi[i] = &t
+	}
 	s := spinner.New()
 	s.Spinner = spinner.Meter
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4"))
 
 	return &model{
-		activeTab:       0,
-		activeOption:    0,
-		activeChoice:    0,
-		activeIP:        0,
-		activeFlag:      0,
-		activeProfile:   0,
-		activeProfileTi: 0,
+		activeTab:          0,
+		activeOption:       0,
+		activeChoice:       0,
+		activeIP:           0,
+		activeFlag:         0,
+		activeProfile:      0,
+		activeProfileTi:    0,
+		activeTmpProfileTi: 0,
 
-		selectedIP:     "",
-		selectedDomain: "",
-		textInput:      ti,
-		profileInput:   pi,
-		spinner:        s,
-		flags:          initialFlags,
-		vpnConnecting:  false,
-		vpnStatus:      "0",
-		ac:             ac,
-		config:         initialConfig,
+		selectedIP:      "",
+		selectedDomain:  "",
+		sv:              &SelectedServer{},
+		textInput:       ti,
+		profileInput:    pi,
+		tmpProfileInput: tpi,
+		spinner:         s,
+		flags:           initialFlags,
+		vpnConnecting:   false,
+		vpnStatus:       "0",
+		ac:              ac,
+		config:          initialConfig,
 		// profiles:       initialConfig.Profiles,
 	}
 }
@@ -220,7 +245,7 @@ func dig(domain string) tea.Cmd {
 		for _, ip := range ips {
 			ipStrings = append(ipStrings, ip.String())
 		}
-		time.Sleep(1 * time.Second)
+		// time.Sleep(1 * time.Second)
 		return digResult{ips: ipStrings}
 	}
 }
@@ -401,10 +426,60 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				m.selectedIP = m.digIPs[m.activeIP]
 				m.selectedDomain = m.textInput.Value()
-				m.textInput.Reset()
-				clear(m.digIPs)
-				m.activeOption = 0
-				m.focus = focusConnect
+				// m.textInput.Reset()
+				// clear(m.digIPs)
+				// m.config.LastUsedProfile = Profile{
+				// 	Name: "Temp Profile",
+				// 	IP: ,
+				// }
+				// m.activeOption = 0
+				m.sv.Name = fmt.Sprintf("Temp %s", strings.Split(m.selectedDomain, ".")[0])
+				m.sv.IP = m.selectedIP
+
+				m.focus = focusTmpProfileCreate
+				m.activeTab = 2
+			}
+
+		case focusTmpProfileCreate:
+			switch msg.String() {
+			case "down":
+				m.tmpProfileInput[m.activeTmpProfileTi].Blur()
+				m.activeTmpProfileTi = (m.activeTmpProfileTi + 1) % 3
+				m.tmpProfileInput[m.activeTmpProfileTi].Focus()
+
+			case "up":
+				m.tmpProfileInput[m.activeTmpProfileTi].Blur()
+				m.activeTmpProfileTi = (m.activeTmpProfileTi - 1 + 3) % 3
+				m.tmpProfileInput[m.activeTmpProfileTi].Focus()
+			case "tab", "esc":
+				clearTextInputs(m.tmpProfileInput)
+				m.tmpProfileInput[m.activeProfileTi].Blur()
+				m.activeTmpProfileTi = 0
+				m.tmpProfileInput[m.activeProfileTi].Focus()
+
+				m.activeTab = 1
+
+				m.focus = focusIPList
+			case "enter":
+				if tiProfileIsEmpty(m.tmpProfileInput) {
+					break
+				} else {
+					setSelectedServer(m.sv, m.tmpProfileInput)
+					// m.config.LastUsedProfile = Profile(*m.sv)
+					// addProfile(m.tmpProfileInput, &m.config)
+					clearTextInputs(m.tmpProfileInput)
+					m.tmpProfileInput[m.activeTmpProfileTi].Blur()
+					m.activeIP = 0
+					m.activeTmpProfileTi = 0
+					m.tmpProfileInput[m.activeTmpProfileTi].Focus()
+					m.activeOption = 0
+					m.activeTab = 1
+					m.textInput.Reset()
+					clear(m.digIPs)
+					m.focus = focusConnect
+
+					// return m, saveProfilesCmd(m.ac, m.config)
+				}
 			}
 		case focusConnect:
 			switch msg.String() {
@@ -475,6 +550,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.profileInput[m.activeProfileTi] = &updatedInput
 		cmd = updatedCmd
 
+	} else if m.focus == focusTmpProfileCreate {
+		updatedInput, updatedCmd := m.tmpProfileInput[m.activeTmpProfileTi].Update(msg)
+		m.tmpProfileInput[m.activeTmpProfileTi] = &updatedInput
+		cmd = updatedCmd
 	}
 
 	return m, cmd
@@ -499,8 +578,8 @@ func (m *model) View() string {
 			var parts []string
 			switch m.activeOption {
 			case 0:
-				if m.selectedDomain != "" {
-					parts = append(parts, "Server:", selDomainStyle.Render(m.selectedDomain), "IP:", selDomainStyle.Render(m.selectedIP))
+				if m.sv.IP != "" {
+					parts = append(parts, "Profile Name:", selDomainStyle.Render(m.sv.Name), "IP:", selDomainStyle.Render(m.sv.IP))
 				} else {
 					parts = append(parts, "Server:", nilDomainStyle.Render("Select via 'dig' tab."))
 				}
@@ -641,6 +720,32 @@ func (m *model) View() string {
 			modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
 			renderedCols[2] = setFlagModalStyle.Render(modalContent)
 		}
+	case focusTmpProfileCreate:
+		selectedPart := fmt.Sprintf("%s\n%s", m.sv.Name, m.sv.IP)
+		modalParts = append(modalParts, selectedPart)
+
+		for i, ti := range m.tmpProfileInput {
+			if len(ti.Value()) == 0 {
+				ti.PlaceholderStyle = nilProfileTiStyle
+				ti.PromptStyle = nilProfileTiStyle
+				ti.Cursor.Style = nilProfileTiStyle
+			} else {
+				ti.PlaceholderStyle = lipgloss.NewStyle()
+				ti.PromptStyle = lipgloss.NewStyle()
+				ti.Cursor.Style = lipgloss.NewStyle()
+			}
+			if i == m.activeTmpProfileTi {
+				ti.Prompt = "> "
+				modalParts = append(modalParts, ti.View())
+			} else {
+				ti.Prompt = ""
+				modalParts = append(modalParts, ti.View())
+
+			}
+
+			modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
+			renderedCols[2] = setFlagModalStyle.Render(modalContent)
+		}
 	}
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, renderedCols...)
 
@@ -695,5 +800,20 @@ func saveProfilesCmd(ac *AppConfigSetting, config AppConfig) tea.Cmd {
 	return func() tea.Msg {
 		_ = ac.saveProfiles(config)
 		return nil
+	}
+}
+
+func setSelectedServer(sv *SelectedServer, tiArr []*textinput.Model) {
+	if len(tiArr) == 5 {
+
+		sv.Name = tiArr[0].Value()
+		sv.IP = tiArr[1].Value()
+		sv.Port = tiArr[2].Value()
+		sv.User = tiArr[3].Value()
+		sv.Pass = tiArr[4].Value()
+	} else {
+		sv.Port = tiArr[0].Value()
+		sv.User = tiArr[1].Value()
+		sv.Pass = tiArr[2].Value()
 	}
 }

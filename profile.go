@@ -35,7 +35,8 @@ type AppConfigSetting struct {
 }
 
 type AppConfig struct {
-	Profiles []Profile `json:"profiles"`
+	Profiles        []Profile `json:"profiles"`
+	LastUsedProfile Profile   `json:"last_profile"`
 }
 
 func newAppConfig() *AppConfigSetting {

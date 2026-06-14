@@ -16,6 +16,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+type SelectedServer struct {
+	Name string
+	IP   string
+	Port string
+	User string
+	Pass string
+}
+
 func amIAdmin() bool {
 	var sid *windows.SID
 
