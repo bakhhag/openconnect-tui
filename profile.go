@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,6 +21,55 @@ type FlagRow struct {
 	Value    string
 }
 
+type Profile struct {
+	Name string `json:"name"`
+	IP   string `json:"ip"`
+	Port string `json:"port"`
+	User string `json:"user"`
+	Pass string `json:"pass"`
+}
+
+type AppConfigSetting struct {
+	ConfigDir    string
+	ProfilesPath string
+}
+type AppConfig struct {
+	Profiles map[int]Profile `json:"profiles"`
+}
+
+func newAppConfig() *AppConfigSetting {
+	baseConfigDir, _ := os.UserConfigDir()
+	appConfigDir := filepath.Join(baseConfigDir, "OpenConnect-TUI")
+	if _, err := os.Stat(appConfigDir); err != nil {
+		os.MkdirAll(appConfigDir, 0700)
+	}
+	return &AppConfigSetting{
+		ConfigDir: appConfigDir,
+	}
+}
+
+func (ac *AppConfigSetting) loadProfiles() (AppConfig, error) {
+	ac.ProfilesPath = filepath.Join(ac.ConfigDir, "config.json")
+	config := AppConfig{
+		Profiles: make(map[int]Profile),
+	}
+	if _, err := os.Stat(ac.ProfilesPath); os.IsNotExist(err) {
+		return config, err
+	}
+
+	data, err := os.ReadFile(ac.ProfilesPath)
+	if err != nil {
+		return config, err
+	}
+	err = json.Unmarshal(data, &config)
+	return config, err
+
+}
+func (ac *AppConfigSetting) saveProfiles(config AppConfig) error {
+	data, _ := json.MarshalIndent(config, "", " ")
+	err := os.WriteFile(ac.ProfilesPath, data, 0600)
+	return err
+}
 func loadFlags() ([]FlagRow, int) {
 	// flagMap := make(map[int][]string)
 	var flagRecords []FlagRow
