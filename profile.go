@@ -33,8 +33,9 @@ type AppConfigSetting struct {
 	ConfigDir    string
 	ProfilesPath string
 }
+
 type AppConfig struct {
-	Profiles map[int]Profile `json:"profiles"`
+	Profiles []Profile `json:"profiles"`
 }
 
 func newAppConfig() *AppConfigSetting {
@@ -50,9 +51,11 @@ func newAppConfig() *AppConfigSetting {
 
 func (ac *AppConfigSetting) loadProfiles() (AppConfig, error) {
 	ac.ProfilesPath = filepath.Join(ac.ConfigDir, "config.json")
+
 	config := AppConfig{
-		Profiles: make(map[int]Profile),
+		Profiles: []Profile{},
 	}
+
 	if _, err := os.Stat(ac.ProfilesPath); os.IsNotExist(err) {
 		return config, err
 	}
@@ -61,9 +64,9 @@ func (ac *AppConfigSetting) loadProfiles() (AppConfig, error) {
 	if err != nil {
 		return config, err
 	}
+
 	err = json.Unmarshal(data, &config)
 	return config, err
-
 }
 func (ac *AppConfigSetting) saveProfiles(config AppConfig) error {
 	data, _ := json.MarshalIndent(config, "", " ")

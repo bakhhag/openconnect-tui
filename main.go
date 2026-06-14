@@ -87,9 +87,13 @@ var (
 	activeHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
 	activeFlagStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#2cdb6f"))
 	inactiveFlagStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7e7e7e"))
-	onFlagStyle       = lipgloss.NewStyle().Bold(true)
-	gap               = strings.Repeat(" ", 4)
-	choices           = map[int]string{
+
+	activeProfileStyle   = lipgloss.NewStyle().Bold(true)
+	inactiveProfileStyle = lipgloss.NewStyle().Faint(true)
+
+	onFlagStyle = lipgloss.NewStyle().Bold(true)
+	gap         = strings.Repeat(" ", 4)
+	choices     = map[int]string{
 		0: "connect",
 		1: "dig",
 		2: "flags",
@@ -126,9 +130,9 @@ type model struct {
 	digIsLoading bool
 	flags        []FlagRow
 
-	ac       *AppConfigSetting
-	config   AppConfig
-	profiles map[int]Profile
+	ac     *AppConfigSetting
+	config AppConfig
+	// profiles []Profile
 
 	vpnConnecting bool
 	vpnStatus     string
@@ -193,7 +197,7 @@ func initialModel() *model {
 		vpnStatus:      "0",
 		ac:             ac,
 		config:         initialConfig,
-		profiles:       initialConfig.Profiles,
+		// profiles:       initialConfig.Profiles,
 	}
 }
 
@@ -272,21 +276,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			}
 		case focusProfile:
-			numProfiles := len(m.profiles)
+			numProfiles := len(m.config.Profiles)
 			switch msg.String() {
 			case "tab":
 				m.activeProfile = 0
 				m.focus = focusOptionBar
-			case "enter":
+			case "A", "a":
 				m.focus = focusProfileCreate
 				m.activeTab = 2
 				clearTextInputs(m.profileInput)
-			// case "down":
-			// 	m.activeProfile = (m.activeProfile + 1) % numProfiles
-			// case "up":
-			// 	m.activeProfile = (m.activeProfile - 1 + numProfiles) % numProfiles
+				return m, cmd
+			case "d", "D":
+				m.config.Profiles = append(m.config.Profiles[:m.activeProfile], m.config.Profiles[m.activeProfile+1:]...)
+				m.activeProfile = (m.activeProfile - 1 + numProfiles) % numProfiles
+
+				return m, saveProfilesCmd(m.ac, m.config)
+
 			case "down", "up":
-				if numProfiles < 1 {
+				if numProfiles == 0 {
 					break
 				}
 				if msg.String() == "down" {
@@ -321,7 +328,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if tiProfileIsEmpty(m.profileInput) {
 					break
 				} else {
-					addProfile(m.profileInput, m.profiles)
+					addProfile(m.profileInput, &m.config)
 					clearTextInputs(m.profileInput)
 					m.profileInput[m.activeProfileTi].Blur()
 					m.activeProfile = 0
@@ -545,13 +552,23 @@ func (m *model) View() string {
 
 				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
 			case 3:
-				if len(m.profiles) > 0 {
-					content = ""
+				if len(m.config.Profiles) > 0 {
+					for i, profile := range m.config.Profiles {
+						var profText = fmt.Sprintf("%s:%s", profile.Name, profile.IP)
+
+						if m.activeProfile == i {
+							parts = append(parts, activeProfileStyle.Render(profText))
+						} else {
+							parts = append(parts, inactiveProfileStyle.Render(profText))
+						}
+
+					}
 				} else {
-					parts = append(parts, "Press [Enter] to create a profile.")
-					content = lipgloss.JoinVertical(lipgloss.Left, parts...)
+					parts = append(parts, "Press [A] to create a profile.")
 
 				}
+				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
+
 			default:
 				content = ""
 			}
@@ -662,9 +679,8 @@ func tiProfileIsEmpty(tiArr []*textinput.Model) bool {
 	return false
 }
 
-func addProfile(tiArr []*textinput.Model, profiles map[int]Profile) {
-	numCurr := len(profiles)
-	profiles[numCurr] = Profile{
+func addProfile(tiArr []*textinput.Model, config *AppConfig) {
+	newProfile := Profile{
 		Name: tiArr[0].Value(),
 		IP:   tiArr[1].Value(),
 		Port: tiArr[2].Value(),
@@ -672,6 +688,7 @@ func addProfile(tiArr []*textinput.Model, profiles map[int]Profile) {
 		Pass: tiArr[4].Value(),
 	}
 
+	config.Profiles = append(config.Profiles, newProfile)
 }
 
 func saveProfilesCmd(ac *AppConfigSetting, config AppConfig) tea.Cmd {
