@@ -316,7 +316,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeProfile = (m.activeProfile - 1 + numProfiles) % numProfiles
 
 				return m, saveProfilesCmd(m.ac, m.config)
+			case "enter":
+				setSelectedServerProfile(m.sv, m.config.Profiles[m.activeProfile])
+				m.activeProfile = 0
+				m.activeOption = 0
+				m.activeTab = 1
+				m.focus = focusConnect
 
+				// return m, cmd
 			case "down", "up":
 				if numProfiles == 0 {
 					break
@@ -579,7 +586,7 @@ func (m *model) View() string {
 			switch m.activeOption {
 			case 0:
 				if m.sv.IP != "" {
-					parts = append(parts, "Profile Name:", selDomainStyle.Render(m.sv.Name), "IP:", selDomainStyle.Render(m.sv.IP))
+					parts = append(parts, "Profile Name:", selDomainStyle.Render(m.sv.Name), "Server:", selDomainStyle.Render(fmt.Sprintf("%s:%s", m.sv.IP, m.sv.Port)), "Login Info:", selDomainStyle.Render(fmt.Sprintf("%s...:***", m.sv.User[:10])))
 				} else {
 					parts = append(parts, "Server:", nilDomainStyle.Render("Select via 'dig' tab."))
 				}
@@ -816,4 +823,12 @@ func setSelectedServer(sv *SelectedServer, tiArr []*textinput.Model) {
 		sv.User = tiArr[1].Value()
 		sv.Pass = tiArr[2].Value()
 	}
+}
+
+func setSelectedServerProfile(sv *SelectedServer, profile Profile) {
+	sv.Name = profile.Name
+	sv.IP = profile.IP
+	sv.Port = profile.Port
+	sv.User = profile.User
+	sv.Pass = profile.Pass
 }
