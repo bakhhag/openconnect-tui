@@ -71,15 +71,15 @@ func runAsAdmin() {
 	os.Exit(0)
 }
 
-func openconnect(p *tea.Program, stopChan <-chan struct{}, doneChan chan<- struct{}, ip string, flags []FlagRow) {
+func openconnect(p *tea.Program, stopChan <-chan struct{}, doneChan chan<- struct{}, sv SelectedServer, flags []FlagRow) {
 	defer close(doneChan)
 	var err = godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	var OC_USER string = os.Getenv("OC_USER")
-	var OC_PASS string = os.Getenv("OC_PASS")
-	var TARGET_IP string = ip + ":22"
+	var TARGET_SERVER string = fmt.Sprintf("%s:%s", sv.IP, sv.Port)
+	var OC_USER string = sv.User
+	var OC_PASS string = sv.Pass
 	var SELECTED_FLAGS []string
 	for _, flag := range flags {
 		if flag.Selected == "1" {
@@ -90,7 +90,7 @@ func openconnect(p *tea.Program, stopChan <-chan struct{}, doneChan chan<- struc
 			}
 		}
 	}
-	oc_args := []string{TARGET_IP, "-u", OC_USER}
+	oc_args := []string{TARGET_SERVER, "-u", OC_USER}
 	oc_args = append(oc_args, SELECTED_FLAGS...)
 	cmd := exec.Command("openconnect", oc_args...)
 	stdout, _ := cmd.StdoutPipe()

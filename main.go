@@ -495,12 +495,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeTab = 0
 			case "enter":
 
-				if m.selectedIP != "" {
+				if m.sv.IP != "" {
 					if m.vpnConnecting == false {
 						m.stopChan = make(chan struct{})
 						m.doneChan = make(chan struct{})
 						m.vpnConnecting = true
-						go openconnect(m.program, m.stopChan, m.doneChan, m.selectedIP, m.flags)
+						go openconnect(m.program, m.stopChan, m.doneChan, *m.sv, m.flags)
 					} else {
 						if m.stopChan != nil {
 							close(m.stopChan)
