@@ -150,7 +150,13 @@ type model struct {
 func initialModel() *model {
 	ac := newAppConfig()
 	initialConfig, _ := ac.loadProfiles()
-
+	// load last profile if available
+	var initialServer *Profile
+	if initialConfig.LastUsedProfile.IP != "" {
+		initialServer = &initialConfig.LastUsedProfile
+	} else {
+		initialServer = &Profile{}
+	}
 	ti := textinput.New()
 	ti.Placeholder = "example.com"
 	ti.CharLimit = 100
@@ -212,7 +218,7 @@ func initialModel() *model {
 
 		selectedIP:      "",
 		selectedDomain:  "",
-		sv:              &Profile{},
+		sv:              initialServer,
 		textInput:       ti,
 		profileInput:    pi,
 		tmpProfileInput: tpi,
@@ -590,6 +596,9 @@ func (m *model) View() string {
 			case 0:
 				if m.sv.IP != "" {
 					parts = append(parts, "Profile Name:", selDomainStyle.Render(m.sv.Name), "Server:", selDomainStyle.Render(fmt.Sprintf("%s:%s", m.sv.IP, m.sv.Port)), "Login Info:", selDomainStyle.Render(fmt.Sprintf("%s...:***", m.sv.User[:10])))
+				} else if m.config.LastUsedProfile.IP != "" {
+					var last_profile = m.config.LastUsedProfile
+					parts = append(parts, "Profile Name:", selDomainStyle.Render(last_profile.Name), "Server:", selDomainStyle.Render(fmt.Sprintf("%s:%s", last_profile.IP, last_profile.Port)), "Login Info:", selDomainStyle.Render(fmt.Sprintf("%s...:***", last_profile.User[:10])))
 				} else {
 					parts = append(parts, "Server:", nilDomainStyle.Render("Select via 'dig' tab."))
 				}
