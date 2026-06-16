@@ -54,7 +54,8 @@ func (ac *AppConfigSetting) loadProfiles() (AppConfig, error) {
 	ac.ProfilesPath = filepath.Join(ac.ConfigDir, "config.json")
 
 	config := AppConfig{
-		Profiles: []Profile{},
+		Profiles:        []Profile{},
+		LastUsedProfile: Profile{},
 	}
 
 	if _, err := os.Stat(ac.ProfilesPath); os.IsNotExist(err) {

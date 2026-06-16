@@ -71,7 +71,7 @@ func runAsAdmin() {
 	os.Exit(0)
 }
 
-func openconnect(p *tea.Program, stopChan <-chan struct{}, doneChan chan<- struct{}, sv SelectedServer, flags []FlagRow) {
+func openconnect(p *tea.Program, stopChan <-chan struct{}, doneChan chan<- struct{}, sv Profile, flags []FlagRow) {
 	defer close(doneChan)
 	var err = godotenv.Load()
 	if err != nil {

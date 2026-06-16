@@ -121,7 +121,7 @@ type model struct {
 
 	selectedIP     string
 	selectedDomain string
-	sv             *SelectedServer
+	sv             *Profile
 
 	focus focusArea
 
@@ -212,7 +212,7 @@ func initialModel() *model {
 
 		selectedIP:      "",
 		selectedDomain:  "",
-		sv:              &SelectedServer{},
+		sv:              &Profile{},
 		textInput:       ti,
 		profileInput:    pi,
 		tmpProfileInput: tpi,
@@ -500,7 +500,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.stopChan = make(chan struct{})
 						m.doneChan = make(chan struct{})
 						m.vpnConnecting = true
+						setLastProfile(m.sv, &m.config)
 						go openconnect(m.program, m.stopChan, m.doneChan, *m.sv, m.flags)
+						return m, saveProfilesCmd(m.ac, m.config)
+
 					} else {
 						if m.stopChan != nil {
 							close(m.stopChan)
@@ -810,7 +813,7 @@ func saveProfilesCmd(ac *AppConfigSetting, config AppConfig) tea.Cmd {
 	}
 }
 
-func setSelectedServer(sv *SelectedServer, tiArr []*textinput.Model) {
+func setSelectedServer(sv *Profile, tiArr []*textinput.Model) {
 	if len(tiArr) == 5 {
 
 		sv.Name = tiArr[0].Value()
@@ -825,10 +828,14 @@ func setSelectedServer(sv *SelectedServer, tiArr []*textinput.Model) {
 	}
 }
 
-func setSelectedServerProfile(sv *SelectedServer, profile Profile) {
+func setSelectedServerProfile(sv *Profile, profile Profile) {
 	sv.Name = profile.Name
 	sv.IP = profile.IP
 	sv.Port = profile.Port
 	sv.User = profile.User
 	sv.Pass = profile.Pass
+}
+
+func setLastProfile(sv *Profile, config *AppConfig) {
+	config.LastUsedProfile = *sv
 }
