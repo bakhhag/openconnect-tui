@@ -796,7 +796,7 @@ func main() {
 		return
 	}
 	m := initialModel()
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	m.program = p
 	if _, err := p.Run(); err != nil {
