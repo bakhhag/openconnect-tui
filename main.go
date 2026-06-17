@@ -128,6 +128,7 @@ type model struct {
 	textInput       textinput.Model
 	profileInput    []*textinput.Model
 	tmpProfileInput []*textinput.Model
+	editProfileFlag bool
 
 	digErr       error
 	digIPs       []string
@@ -223,6 +224,7 @@ func initialModel() *model {
 		textInput:       ti,
 		profileInput:    pi,
 		tmpProfileInput: tpi,
+		editProfileFlag: false,
 		spinner:         s,
 		flags:           initialFlags,
 		vpnConnecting:   false,
@@ -327,6 +329,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeProfile = (m.activeProfile - 1 + numProfiles) % numProfiles
 
 				return m, saveProfilesCmd(m.ac, m.config)
+			case "e", "E":
+				prepareProfileCRUD(m.profileInput, &m.config.Profiles[m.activeProfile], true)
+				m.activeTmpProfileTi = 0
+				m.profileInput[m.activeTmpProfileTi].Focus()
+				m.activeTab = 2
+				m.editProfileFlag = true
+
+				m.focus = focusProfileCreate
+				return m, cmd
 			case "enter":
 				setSelectedServerProfile(m.sv, m.config.Profiles[m.activeProfile])
 				m.activeProfile = 0
@@ -371,7 +382,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if tiProfileIsEmpty(m.profileInput) {
 					break
 				} else {
-					addProfile(m.profileInput, &m.config)
+					if m.editProfileFlag {
+						editProfile(m.profileInput, &m.config.Profiles[m.activeProfile])
+						m.editProfileFlag = false
+					} else {
+						addProfile(m.profileInput, &m.config)
+					}
 					clearTextInputs(m.profileInput)
 					m.profileInput[m.activeProfileTi].Blur()
 					m.activeProfile = 0
@@ -505,7 +521,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = focusOptionBar
 				m.activeTab = 0
 			case "A", "a":
-				prepareSavingTmpProfile(m.profileInput, m.sv)
+				prepareProfileCRUD(m.profileInput, m.sv, false)
 				m.activeTmpProfileTi = 0
 				m.profileInput[m.activeTmpProfileTi].Focus()
 				m.activeTab = 2
@@ -796,6 +812,8 @@ func main() {
 		return
 	}
 	m := initialModel()
+	// p := tea.NewProgram(m)
+	// clear terminal when quitting
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	m.program = p
@@ -833,7 +851,14 @@ func addProfile(tiArr []*textinput.Model, config *AppConfig) {
 
 	config.Profiles = append(config.Profiles, newProfile)
 }
+func editProfile(tiArr []*textinput.Model, profile *Profile) {
+	profile.Name = tiArr[0].Value()
+	profile.IP = tiArr[1].Value()
+	profile.Port = tiArr[2].Value()
+	profile.User = tiArr[3].Value()
+	profile.Pass = tiArr[4].Value()
 
+}
 func saveProfilesCmd(ac *AppConfigSetting, config AppConfig) tea.Cmd {
 	return func() tea.Msg {
 		_ = ac.saveProfiles(config)
@@ -868,11 +893,15 @@ func setLastProfile(sv *Profile, config *AppConfig) {
 	config.LastUsedProfile = *sv
 }
 
-func prepareSavingTmpProfile(tiArr []*textinput.Model, sv *Profile) {
+func prepareProfileCRUD(tiArr []*textinput.Model, sv *Profile, editFlag bool) {
 	for _, ti := range tiArr {
 		ti.Blur()
 	}
-	tiArr[0].Reset()
+	if editFlag {
+		tiArr[0].SetValue(sv.Name)
+	} else {
+		tiArr[0].Reset()
+	}
 	tiArr[1].SetValue(sv.IP)
 	tiArr[2].SetValue(sv.Port)
 	tiArr[3].SetValue(sv.User)
