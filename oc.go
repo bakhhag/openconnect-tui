@@ -124,7 +124,7 @@ func openconnect(p *tea.Program, stopChan <-chan struct{}, doneChan chan<- struc
 			p.Send(vpnLogMsg(chunk))
 
 			accumulatedOutput += chunk
-
+			p.Send(vpnLogMsg(accumulatedOutput))
 			if strings.Contains(accumulatedOutput, "Server certificate verify failed: signer not found") {
 				// fmt.Println("\n[Go]: Prompt detected! Sending 'yes'...")
 				io.WriteString(stdin, "yes\n")

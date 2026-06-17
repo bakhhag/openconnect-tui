@@ -140,9 +140,10 @@ type model struct {
 
 	vpnConnecting bool
 	vpnStatus     string
-	vpnLogs       []string
-	stopChan      chan struct{}
-	doneChan      chan struct{}
+	// vpnLogs       []string
+	vpnLogs  string
+	stopChan chan struct{}
+	doneChan chan struct{}
 
 	program *tea.Program
 }
@@ -226,6 +227,7 @@ func initialModel() *model {
 		flags:           initialFlags,
 		vpnConnecting:   false,
 		vpnStatus:       "0",
+		vpnLogs:         "",
 		ac:              ac,
 		config:          initialConfig,
 		// profiles:       initialConfig.Profiles,
@@ -261,6 +263,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case vpnStatusMsg:
 		m.vpnStatus = string(msg)
+		return m, nil
+	case vpnLogMsg:
+		m.vpnLogs = string(msg)
 		return m, nil
 
 	case spinner.TickMsg:
@@ -499,8 +504,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "tab":
 				m.focus = focusOptionBar
 				m.activeTab = 0
-			case "enter":
+			case "A", "a":
+				prepareSavingTmpProfile(m.profileInput, m.sv)
+				m.activeTmpProfileTi = 0
+				m.profileInput[m.activeTmpProfileTi].Focus()
+				m.activeTab = 2
+				m.activeOption = 3
+				m.focus = focusProfileCreate
 
+				return m, cmd
+			case "enter":
 				if m.sv.IP != "" {
 					if m.vpnConnecting == false {
 						m.stopChan = make(chan struct{})
@@ -513,6 +526,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						if m.stopChan != nil {
 							close(m.stopChan)
+							m.stopChan = nil
 							m.vpnConnecting = false
 
 						}
@@ -577,7 +591,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) View() string {
 	var renderedTabs = make([]string, choicesLen)
-	var renderedCols = make([]string, 3)
+	var renderedCols = make([]string, 4)
 	var content string
 	for i := 0; i < 2; i++ {
 		if i == 0 {
@@ -595,10 +609,10 @@ func (m *model) View() string {
 			switch m.activeOption {
 			case 0:
 				if m.sv.IP != "" {
-					parts = append(parts, "Profile Name:", selDomainStyle.Render(m.sv.Name), "Server:", selDomainStyle.Render(fmt.Sprintf("%s:%s", m.sv.IP, m.sv.Port)), "Login Info:", selDomainStyle.Render(fmt.Sprintf("%s...:***", m.sv.User[:10])))
+					parts = append(parts, "Profile Name:", selDomainStyle.Render(m.sv.Name), "Server:", selDomainStyle.Render(fmt.Sprintf("%s:%s", m.sv.IP, m.sv.Port)), "Login Info:", selDomainStyle.Render(fmt.Sprintf("%s...:***", m.sv.User[:min(10, len(m.sv.User))])))
 				} else if m.config.LastUsedProfile.IP != "" {
 					var last_profile = m.config.LastUsedProfile
-					parts = append(parts, "Profile Name:", selDomainStyle.Render(last_profile.Name), "Server:", selDomainStyle.Render(fmt.Sprintf("%s:%s", last_profile.IP, last_profile.Port)), "Login Info:", selDomainStyle.Render(fmt.Sprintf("%s...:***", last_profile.User[:10])))
+					parts = append(parts, "Profile Name:", selDomainStyle.Render(last_profile.Name), "Server:", selDomainStyle.Render(fmt.Sprintf("%s:%s", last_profile.IP, last_profile.Port)), "Login Info:", selDomainStyle.Render(fmt.Sprintf("%s...:***", last_profile.User[:min(10, len(m.sv.User))])))
 				} else {
 					parts = append(parts, "Server:", nilDomainStyle.Render("Select via 'dig' tab."))
 				}
@@ -695,27 +709,32 @@ func (m *model) View() string {
 		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
 		renderedCols[2] = setFlagModalStyle.Render(modalContent)
 	case focusConnect:
+		var log = fmt.Sprintf("log:\n%s", m.vpnLogs)
+		var logParts []string
+		logParts = append(logParts, log)
 		var statusStyle lipgloss.Style
 		var title string
-		title = fmt.Sprintf("state : %s", m.vpnStatus)
 		switch m.vpnStatus {
 		case "0":
 			statusStyle = vpnDisconnectedStyle
-			title = "state : Disconnected"
+			title = "state:\nDisconnected"
 		case "1":
 			statusStyle = vpnConnectedStyle
-			title = "state : Connected"
+			title = "state:\nConnected"
 		case "2":
 			statusStyle = vpnConnectingStyle
-			title = "state : Connecting"
+			title = "state:\nConnecting"
 		default:
 			statusStyle = vpnDisconnectedStyle
-			title = "state : Disconnected"
+			title = "state:\nDisconnected"
 		}
 
 		modalParts = append(modalParts, title)
 		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
-		renderedCols[2] = statusStyle.Render(modalContent)
+		logContent := lipgloss.JoinVertical(lipgloss.Left, logParts...)
+		renderedCols[2] = statusStyle.Render(logContent)
+		renderedCols[3] = statusStyle.Render(modalContent)
+
 	case focusProfileCreate:
 		for i, ti := range m.profileInput {
 			if len(ti.Value()) == 0 {
@@ -847,4 +866,15 @@ func setSelectedServerProfile(sv *Profile, profile Profile) {
 
 func setLastProfile(sv *Profile, config *AppConfig) {
 	config.LastUsedProfile = *sv
+}
+
+func prepareSavingTmpProfile(tiArr []*textinput.Model, sv *Profile) {
+	for _, ti := range tiArr {
+		ti.Blur()
+	}
+	tiArr[0].Reset()
+	tiArr[1].SetValue(sv.IP)
+	tiArr[2].SetValue(sv.Port)
+	tiArr[3].SetValue(sv.User)
+	tiArr[4].SetValue(sv.Pass)
 }
