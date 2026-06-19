@@ -69,6 +69,11 @@ var (
 				Width(20).
 				Height(3)
 
+	vpnLogStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			Padding(0, 1).
+			Width(35).
+			Height(3)
 	vpnStatusStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			Padding(0, 1).
@@ -279,6 +284,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 
 		case "ctrl+c", "q":
+			if m.stopChan != nil {
+				close(m.stopChan)
+				m.stopChan = nil
+				m.vpnConnecting = false
+
+			}
 			// TODO : save flags.csv on quit
 			return m, tea.Quit
 
@@ -725,7 +736,7 @@ func (m *model) View() string {
 		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
 		renderedCols[2] = setFlagModalStyle.Render(modalContent)
 	case focusConnect:
-		var log = fmt.Sprintf("log:\n%s", m.vpnLogs)
+		var log = fmt.Sprintf("log:\n%s", m.vpnLogs[max(0, len(m.vpnLogs)-50):])
 		var logParts []string
 		logParts = append(logParts, log)
 		var statusStyle lipgloss.Style
@@ -748,7 +759,7 @@ func (m *model) View() string {
 		modalParts = append(modalParts, title)
 		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
 		logContent := lipgloss.JoinVertical(lipgloss.Left, logParts...)
-		renderedCols[2] = statusStyle.Render(logContent)
+		renderedCols[2] = vpnLogStyle.Render(logContent)
 		renderedCols[3] = statusStyle.Render(modalContent)
 
 	case focusProfileCreate:
