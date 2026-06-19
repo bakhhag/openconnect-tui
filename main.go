@@ -103,10 +103,9 @@ var (
 		1: "dig",
 		2: "flags",
 		3: "profiles",
-		4: "settings",
+		// 4: "settings",
 	}
-	choicesLen             = len(choices)
-	initialFlags, flagsLen = loadFlags()
+	choicesLen = len(choices)
 
 	programInstance *tea.Program
 )
@@ -157,6 +156,8 @@ type model struct {
 func initialModel() *model {
 	ac := newAppConfig()
 	initialConfig, _ := ac.loadProfiles()
+	initialFlags := ac.loadFlags()
+
 	// load last profile if available
 	var initialServer *Profile
 	if initialConfig.LastUsedProfile.IP != "" {
@@ -411,6 +412,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case focusFlagList:
+			flagsLen := len(m.flags)
 			switch msg.String() {
 			case "down":
 				m.activeFlag = (m.activeFlag + 1) % flagsLen
@@ -421,7 +423,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// add saving loading screen later
 
 				m.focus = focusOptionBar
-				return m, saveFlagsCmd(m.flags)
+				return m, m.ac.saveFlagsCmd(m.flags)
 			case "enter":
 				var selectedFlag = m.flags[m.activeFlag]
 				if selectedFlag.Selected == "0" {
@@ -580,7 +582,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeTab = 1
 				m.textInput.Reset()
 				m.textInput.Blur()
-				return m, saveFlagsCmd(m.flags)
+				return m, m.ac.saveFlagsCmd(m.flags)
 
 			}
 
@@ -667,6 +669,7 @@ func (m *model) View() string {
 				}
 				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
 			case 2:
+				flagsLen := len(m.flags)
 				var upperThresh int
 				upperThresh = m.activeFlag + 8
 				if upperThresh > flagsLen {

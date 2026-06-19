@@ -11,9 +11,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-var (
-	flagsPath string = "flags.csv"
-)
+const defaultFlags = `flag,selected,value
+disable-ipv6,0,
+no-dtls,0,
+no-xmlpost,0,
+base-mtu=,0,
+mtu=,0,
+sni=,0,google.com
+proxy=,0,
+no-http-keepalive,0,
+`
 
 type FlagRow struct {
 	Flag     string
@@ -32,6 +39,7 @@ type Profile struct {
 type AppConfigSetting struct {
 	ConfigDir    string
 	ProfilesPath string
+	FlagsPath    string
 }
 
 type AppConfig struct {
@@ -75,15 +83,29 @@ func (ac *AppConfigSetting) saveProfiles(config AppConfig) error {
 	err := os.WriteFile(ac.ProfilesPath, data, 0600)
 	return err
 }
-func loadFlags() ([]FlagRow, int) {
-	// flagMap := make(map[int][]string)
+func (ac *AppConfigSetting) loadFlags() []FlagRow {
+	ac.FlagsPath = filepath.Join(ac.ConfigDir, "flags.csv")
 	var flagRecords []FlagRow
 
-	file, err := os.Open(flagsPath)
+	file, err := os.OpenFile(ac.FlagsPath, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Fatalf("Failed to open or create flags file: %v", err)
+		}
+	}
+	defer file.Close()
+	stat, err := file.Stat()
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer file.Close()
+	if stat.Size() == 0 {
+		if _, err := file.WriteString(defaultFlags); err != nil {
+			log.Fatalf("Error writing default flags: %v", err)
+		}
+		if _, err := file.Seek(0, 0); err != nil {
+			log.Fatalf("Error rewinding file: %v", err)
+		}
+	}
 	reader := csv.NewReader(file)
 	_, err = reader.Read()
 	records, err := reader.ReadAll()
@@ -103,7 +125,7 @@ func loadFlags() ([]FlagRow, int) {
 	sort.Slice(flagRecords, func(i, j int) bool {
 		return flagRecords[i].Selected > flagRecords[j].Selected
 	})
-	return flagRecords, len(flagRecords)
+	return flagRecords
 }
 
 func setFlagSelected(records []FlagRow, index int, set bool) {
@@ -120,9 +142,9 @@ func setFlagSelected(records []FlagRow, index int, set bool) {
 func setFlagValue(records []FlagRow, index int, value string) {
 	records[index].Value = value
 }
-func saveFlagsCmd(records []FlagRow) tea.Cmd {
+func (ac *AppConfigSetting) saveFlagsCmd(records []FlagRow) tea.Cmd {
 	return func() tea.Msg {
-		file, _ := os.Create("flags.csv")
+		file, _ := os.Create(ac.FlagsPath)
 		defer file.Close()
 		writer := csv.NewWriter(file)
 		defer writer.Flush()
