@@ -49,7 +49,26 @@ go build -ldflags="-s -w" -o bin/openconnect-tui.exe
 
 *Note: Because OpenConnect requires administrative privileges to modify system network routes, the application will prompt for administrator elevation when launched.*
 
-## Keyboard Shortcuts
+### Customizing Flags
+
+Flags can be added or removed by modifying the `flags.csv` configuration file located in:
+`%APPDATA%\OpenConnect-TUI\flags.csv`
+
+The CSV file uses the following structure:
+```csv
+flag,selected,value
+no-dtls,1,
+disable-ipv6,0,
+no-xmlpost,0,
+```
+#### Configuration Rules:
+
+*   **Standard Flags (No values):** For flags that do not require an argument, set the `selected` column to `1` (enabled) or `0` (disabled), and leave the `value` column empty.
+*   **Value-Based Flags:** For flags that require an argument, append an equals sign `=` to the flag name in the `flag` column (e.g., `proxy=`). You can predefine the argument in the `value` column or leave it blank to enter it later.
+
+*Note: Native flag management from within the TUI interface is planned for a future release.*
+
+## Keyboard Shortcuts 
 
 ### Global Navigation
 *   `↑ / ↓` (Arrow Keys): Navigate menus and lists
@@ -70,6 +89,7 @@ go build -ldflags="-s -w" -o bin/openconnect-tui.exe
 
 - [ ] Complete Linux compatibility
 - [ ] Refine UI components and layouts
+- [ ] Customzing Flags from TUI
 
 ## Contributing
 
