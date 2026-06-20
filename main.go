@@ -93,6 +93,8 @@ var (
 	activeFlagStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#2cdb6f"))
 	inactiveFlagStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7e7e7e"))
 
+	uiKeyStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("#f1f1f1"))
+	uiDescStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#f1f1f1")).Faint(true)
 	activeProfileStyle   = lipgloss.NewStyle().Bold(true)
 	inactiveProfileStyle = lipgloss.NewStyle().Faint(true)
 
@@ -150,6 +152,7 @@ type model struct {
 	stopChan chan struct{}
 	doneChan chan struct{}
 
+	help    bool
 	program *tea.Program
 }
 
@@ -238,6 +241,7 @@ func initialModel() *model {
 		vpnLogs:         "",
 		ac:              ac,
 		config:          initialConfig,
+		help:            true,
 		// profiles:       initialConfig.Profiles,
 	}
 }
@@ -301,6 +305,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			m.activeTab = (m.activeTab - 1 + 2) % 2
 			m.activeChoice = 0
+		case "?":
+			m.help = !m.help
 		}
 		switch m.focus {
 		case focusOptionBar:
@@ -621,6 +627,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) View() string {
 	var renderedTabs = make([]string, choicesLen)
 	var renderedCols = make([]string, 4)
+
 	var content string
 	for i := 0; i < 2; i++ {
 		if i == 0 {
@@ -815,9 +822,30 @@ func (m *model) View() string {
 			renderedCols[2] = setFlagModalStyle.Render(modalContent)
 		}
 	}
+
+	var helpUI string
+	var helpToggleCol []string
+	var permaHelpCol []string
+	spacer := "   "
+	keys := prepareHelpKeys(m.focus)
+	for i, key := range keys {
+		styledIcon := uiKeyStyle.Render(key.Icon)
+		styledDesc := uiDescStyle.Render(key.Desc)
+		switch {
+		case i <= 2:
+			permaHelpCol = append(permaHelpCol, fmt.Sprintf("%s %s", styledIcon, styledDesc))
+		case i > 2:
+			helpToggleCol = append(helpToggleCol, fmt.Sprintf("%s %s", styledIcon, styledDesc))
+		}
+	}
+	if m.help {
+		helpUI = lipgloss.JoinHorizontal(lipgloss.Left, lipgloss.JoinVertical(lipgloss.Left, permaHelpCol...), spacer, lipgloss.JoinVertical(lipgloss.Left, helpToggleCol...))
+	} else {
+		helpUI = lipgloss.JoinHorizontal(lipgloss.Left, lipgloss.JoinVertical(lipgloss.Left, permaHelpCol...))
+	}
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, renderedCols...)
 
-	return "\n" + ui + "\n\nPress Tab to switch columns | q to quit\n"
+	return "\n" + ui + "\n\n" + helpUI
 }
 
 func main() {
@@ -920,4 +948,41 @@ func prepareProfileCRUD(tiArr []*textinput.Model, sv *Profile, editFlag bool) {
 	tiArr[2].SetValue(sv.Port)
 	tiArr[3].SetValue(sv.User)
 	tiArr[4].SetValue(sv.Pass)
+}
+
+type KeyHelp struct {
+	Icon string
+	Desc string
+}
+
+func prepareHelpKeys(focus focusArea) []KeyHelp {
+	var keys []KeyHelp
+	keys = append(keys, KeyHelp{Icon: "Tab", Desc: "switch tabs"})
+	keys = append(keys, KeyHelp{Icon: "?", Desc: "toggle help"})
+	keys = append(keys, KeyHelp{Icon: "q", Desc: "quit"})
+	switch focus {
+	case focusConnect:
+		// keys = append(keys, KeyHelp{Icon: "↑/↓" , Desc: "navigate menu"})
+		keys = append(keys, KeyHelp{Icon: "A", Desc: "add current profile"})
+		keys = append(keys, KeyHelp{Icon: "Enter", Desc: "connect/disconnect"})
+	case focusInput:
+		keys = append(keys, KeyHelp{Icon: "Enter", Desc: "perform DNS lookup"})
+	case focusIPList:
+		keys = append(keys, KeyHelp{Icon: "↑/↓", Desc: "navigate menu"})
+		keys = append(keys, KeyHelp{Icon: "Enter", Desc: "select an IP"})
+	case focusFlagModal:
+		keys = append(keys, KeyHelp{Icon: "Enter", Desc: "set flag value"})
+	case focusFlagList:
+		keys = append(keys, KeyHelp{Icon: "↑/↓", Desc: "navigate menu"})
+		keys = append(keys, KeyHelp{Icon: "Enter", Desc: "select flag"})
+	case focusProfileCreate, focusTmpProfileCreate:
+		keys = append(keys, KeyHelp{Icon: "↑/↓", Desc: "navigate fields"})
+		keys = append(keys, KeyHelp{Icon: "Enter", Desc: "save profile(fill all fields)"})
+	case focusProfile:
+		keys = append(keys, KeyHelp{Icon: "↑/↓", Desc: "navigate fields"})
+		keys = append(keys, KeyHelp{Icon: "A", Desc: "add profile"})
+		keys = append(keys, KeyHelp{Icon: "D", Desc: "delete profile"})
+	}
+
+	return keys
 }
