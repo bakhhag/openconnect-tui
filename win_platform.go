@@ -47,12 +47,36 @@ func runAsAdmin() {
 	cwd, _ := os.Getwd()
 	args := strings.Join(os.Args[1:], " ")
 
-	verbPtr, _ := syscall.UTF16PtrFromString(verb)
-	exePtr, _ := syscall.UTF16PtrFromString(exe)
-	cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
-	argPtr, _ := syscall.UTF16PtrFromString(args)
+	var targetFile string
+	var targetArgs string
 
-	var showCmd int32 = 1
+	wtPath, err := exec.LookPath("wt")
+	if err == nil {
+		targetFile = wtPath
+		if args != "" {
+			targetArgs = fmt.Sprintf("-d \"%s\" \"%s\" %s", cwd, exe, args)
+		} else {
+			targetArgs = fmt.Sprintf("-d \"%s\" \"%s\"", cwd, exe)
+		}
+	} else {
+		cmdPath := os.Getenv("COMSPEC")
+		if cmdPath == "" {
+			cmdPath = "cmd.exe"
+		}
+		targetFile = cmdPath
+		if args != "" {
+			targetArgs = fmt.Sprintf("/c \"\"%s\" %s\"", exe, args)
+		} else {
+			targetArgs = fmt.Sprintf("/c \"\"%s\"\"", exe)
+		}
+	}
+
+	verbPtr, _ := syscall.UTF16PtrFromString(verb)
+	exePtr, _ := syscall.UTF16PtrFromString(targetFile)
+	cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
+	argPtr, _ := syscall.UTF16PtrFromString(targetArgs)
+
+	var showCmd int32 = 1 // SW_SHOWNORMAL
 
 	err = windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
 	if err != nil {
