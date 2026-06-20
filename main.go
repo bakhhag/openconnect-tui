@@ -982,6 +982,7 @@ func prepareHelpKeys(focus focusArea) []KeyHelp {
 		keys = append(keys, KeyHelp{Icon: "↑/↓", Desc: "navigate fields"})
 		keys = append(keys, KeyHelp{Icon: "A", Desc: "add profile"})
 		keys = append(keys, KeyHelp{Icon: "D", Desc: "delete profile"})
+		keys = append(keys, KeyHelp{Icon: "E", Desc: "edit profile"})
 	}
 
 	return keys
