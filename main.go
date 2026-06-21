@@ -35,6 +35,9 @@ const (
 	focusProfile
 	focusProfileCreate
 	focusTmpProfileCreate
+	focusCredential
+	focusCredentialCreate
+	focusCredentialPicker
 )
 
 var (
@@ -42,13 +45,13 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("#7D56F4")).
 				Padding(0, 1).
-				Width(10).
+				Width(13).
 				Height(8)
 	inactiveOptionsTabStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("#3C3C3C")).
 				Padding(0, 1).
-				Width(10).
+				Width(13).
 				Height(8)
 	activeSettingsTabStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -105,6 +108,7 @@ var (
 		1: "dig",
 		2: "flags",
 		3: "profiles",
+		4: "credentials",
 		// 4: "settings",
 	}
 	choicesLen = len(choices)
@@ -124,16 +128,20 @@ type model struct {
 	activeProfile      int
 	activeProfileTi    int
 	activeTmpProfileTi int
+	activeCredential   int
+	activeCredentialTi int
+	useCredential      int
+	selectedIP         string
+	selectedDomain     string
+	sv                 *Profile
 
-	selectedIP     string
-	selectedDomain string
-	sv             *Profile
-
-	focus focusArea
+	focus     focusArea
+	LastFocus focusArea
 
 	textInput       textinput.Model
 	profileInput    []*textinput.Model
 	tmpProfileInput []*textinput.Model
+	credInput       []*textinput.Model
 	editProfileFlag bool
 
 	digErr       error
@@ -213,6 +221,22 @@ func initialModel() *model {
 		// t.Prompt = ""
 		tpi[i] = &t
 	}
+	cpi := make([]*textinput.Model, 2)
+	for i := range cpi {
+		t := textinput.New()
+		t.CharLimit = 50
+		switch i {
+		case 0:
+			t.Placeholder = "Username"
+			t.Focus()
+		case 1:
+			t.Placeholder = "Password"
+			t.EchoMode = textinput.EchoPassword
+			t.EchoCharacter = '•'
+		}
+		// t.Prompt = ""
+		cpi[i] = &t
+	}
 	s := spinner.New()
 	s.Spinner = spinner.Meter
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4"))
@@ -226,22 +250,25 @@ func initialModel() *model {
 		activeProfile:      0,
 		activeProfileTi:    0,
 		activeTmpProfileTi: 0,
-
-		selectedIP:      "",
-		selectedDomain:  "",
-		sv:              initialServer,
-		textInput:       ti,
-		profileInput:    pi,
-		tmpProfileInput: tpi,
-		editProfileFlag: false,
-		spinner:         s,
-		flags:           initialFlags,
-		vpnConnecting:   false,
-		vpnStatus:       "0",
-		vpnLogs:         "",
-		ac:              ac,
-		config:          initialConfig,
-		help:            true,
+		activeCredential:   0,
+		activeCredentialTi: 0,
+		useCredential:      -1,
+		selectedIP:         "",
+		selectedDomain:     "",
+		sv:                 initialServer,
+		textInput:          ti,
+		profileInput:       pi,
+		credInput:          cpi,
+		tmpProfileInput:    tpi,
+		editProfileFlag:    false,
+		spinner:            s,
+		flags:              initialFlags,
+		vpnConnecting:      false,
+		vpnStatus:          "0",
+		vpnLogs:            "",
+		ac:                 ac,
+		config:             initialConfig,
+		help:               true,
 		// profiles:       initialConfig.Profiles,
 	}
 }
@@ -328,8 +355,80 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.focus = focusFlagList
 				case 3:
 					m.focus = focusProfile
+				case 4:
+					m.focus = focusCredential
 				}
 
+			}
+		case focusCredential:
+			numCred := len(m.config.Credentials)
+			switch msg.String() {
+			case "tab":
+				m.activeCredential = 0
+				m.focus = focusOptionBar
+			case "A", "a":
+				m.focus = focusCredentialCreate
+				m.activeTab = 2
+				clearTextInputs(m.credInput)
+				return m, cmd
+			case "d", "D":
+				m.config.Credentials = append(m.config.Credentials[:m.activeCredential], m.config.Credentials[m.activeCredential+1:]...)
+				m.activeCredential = (m.activeCredential - 1 + numCred) % numCred
+
+				return m, saveProfilesCmd(m.ac, m.config)
+			case "down", "up":
+				if numCred == 0 {
+					break
+				}
+				if msg.String() == "down" {
+					m.activeCredential = (m.activeCredential + 1) % numCred
+				} else {
+					m.activeCredential = (m.activeCredential - 1 + numCred) % numCred
+
+				}
+			}
+		case focusCredentialCreate:
+			switch msg.String() {
+			case "down":
+				m.credInput[m.activeCredentialTi].Blur()
+				m.activeCredentialTi = (m.activeCredentialTi + 1) % 5
+				m.credInput[m.activeCredentialTi].Focus()
+
+			case "up":
+				m.credInput[m.activeCredentialTi].Blur()
+				m.activeCredentialTi = (m.activeCredentialTi - 1 + 5) % 5
+				m.credInput[m.activeCredentialTi].Focus()
+
+			case "tab", "esc":
+				clearTextInputs(m.profileInput)
+				m.credInput[m.activeProfileTi].Blur()
+				m.activeCredential = 0
+				m.activeCredentialTi = 0
+				m.credInput[m.activeCredentialTi].Focus()
+
+				m.activeTab = 1
+
+				m.focus = focusCredential
+			case "enter":
+				if tiProfileIsEmpty(m.credInput) {
+					break
+				} else {
+					if m.editProfileFlag {
+						editCred(m.credInput, &m.config.Credentials[m.activeCredential])
+						m.editProfileFlag = false
+					} else {
+						addCred(m.credInput, &m.config)
+					}
+					clearTextInputs(m.credInput)
+					m.credInput[m.activeProfileTi].Blur()
+					m.activeProfile = 0
+					m.activeProfileTi = 0
+					m.credInput[m.activeProfileTi].Focus()
+					m.activeTab = 1
+					m.focus = focusProfile
+
+					return m, saveProfilesCmd(m.ac, m.config)
+				}
 			}
 		case focusProfile:
 			numProfiles := len(m.config.Profiles)
@@ -353,7 +452,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.profileInput[m.activeTmpProfileTi].Focus()
 				m.activeTab = 2
 				m.editProfileFlag = true
-
+				m.LastFocus = focusProfile
 				m.focus = focusProfileCreate
 				return m, cmd
 			case "enter":
@@ -376,16 +475,38 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case focusProfileCreate:
+			numInput := len(m.profileInput)
+			// numCred := len(m.config.Credentials)
 			switch msg.String() {
 			case "down":
 				m.profileInput[m.activeProfileTi].Blur()
-				m.activeProfileTi = (m.activeProfileTi + 1) % 5
+				m.activeProfileTi = (m.activeProfileTi + 1) % numInput
 				m.profileInput[m.activeProfileTi].Focus()
 
 			case "up":
 				m.profileInput[m.activeProfileTi].Blur()
-				m.activeProfileTi = (m.activeProfileTi - 1 + 5) % 5
+				m.activeProfileTi = (m.activeProfileTi - 1 + numInput) % numInput
 				m.profileInput[m.activeProfileTi].Focus()
+			case "ctrl+a", "ctrl+A":
+				m.activeCredential = 0
+				m.LastFocus = focusProfileCreate
+				m.focus = focusCredentialPicker
+			// case "left", "right":
+			// 	if numCred == 0 || m.activeProfileTi < 3 {
+			// 		break
+			// 	}
+			// 	if msg.String() == "right" {
+			// 		m.useCredential = (m.useCredential + 1) % numCred
+			// 		useSavedCred(m.profileInput, m.useCredential, &m.config)
+			// 	} else {
+			// 		m.useCredential--
+			// 		if m.useCredential < 0 {
+			// 			m.useCredential = -1
+			// 			useSavedCred(m.profileInput, m.useCredential, &m.config)
+
+			// 		}
+
+			// 	}
 			case "tab", "esc":
 				clearTextInputs(m.profileInput)
 				m.profileInput[m.activeProfileTi].Blur()
@@ -397,6 +518,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				m.focus = focusProfile
 			case "enter":
+				if m.activeProfileTi == 5 {
+					m.activeCredentialTi = 0
+					m.focus = focusCredentialPicker
+					return m, cmd
+				}
 				if tiProfileIsEmpty(m.profileInput) {
 					break
 				} else {
@@ -406,16 +532,45 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						addProfile(m.profileInput, &m.config)
 					}
-					clearTextInputs(m.profileInput)
-					m.profileInput[m.activeProfileTi].Blur()
-					m.activeProfile = 0
-					m.activeProfileTi = 0
-					m.profileInput[m.activeProfileTi].Focus()
+					clearTextInputs(m.credInput)
+					m.profileInput[m.activeCredentialTi].Blur()
+					m.activeCredential = 0
+					m.activeCredentialTi = 0
+					m.profileInput[m.activeCredentialTi].Focus()
 					m.activeTab = 1
 					m.focus = focusProfile
 
 					return m, saveProfilesCmd(m.ac, m.config)
 				}
+			}
+		case focusCredentialPicker:
+			numCred := len(m.config.Credentials)
+			switch msg.String() {
+			case "tab", "esc":
+				m.activeCredential = 0
+				m.focus = m.LastFocus
+			case "down", "up":
+				if numCred == 0 {
+					break
+				}
+				if msg.String() == "down" {
+					m.activeCredential = (m.activeCredential + 1) % numCred
+				} else {
+					m.activeCredential = (m.activeCredential - 1 + numCred) % numCred
+
+				}
+			case "enter":
+				switch m.LastFocus {
+				case focusProfileCreate:
+					useSavedCred(m.profileInput, m.activeCredential, &m.config)
+				case focusTmpProfileCreate:
+					useSavedCred(m.tmpProfileInput, m.activeCredential, &m.config)
+
+				}
+				m.activeCredential = 0
+				m.focus = m.LastFocus
+
+				return m, cmd
 			}
 		case focusFlagList:
 			flagsLen := len(m.flags)
@@ -513,6 +668,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeTab = 1
 
 				m.focus = focusIPList
+			case "ctrl+a", "ctrl+A":
+				m.activeCredential = 0
+				m.LastFocus = focusTmpProfileCreate
+				m.focus = focusCredentialPicker
 			case "enter":
 				if tiProfileIsEmpty(m.tmpProfileInput) {
 					break
@@ -619,6 +778,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updatedInput, updatedCmd := m.tmpProfileInput[m.activeTmpProfileTi].Update(msg)
 		m.tmpProfileInput[m.activeTmpProfileTi] = &updatedInput
 		cmd = updatedCmd
+	} else if m.focus == focusCredentialCreate {
+		updatedInput, updatedCmd := m.credInput[m.activeCredentialTi].Update(msg)
+		m.credInput[m.activeCredentialTi] = &updatedInput
+		cmd = updatedCmd
 	}
 
 	return m, cmd
@@ -717,6 +880,22 @@ func (m *model) View() string {
 
 				}
 				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
+			case 4:
+				if len(m.config.Credentials) > 0 {
+					for i, cred := range m.config.Credentials {
+						var profText = fmt.Sprintf("%s:***", cred.User)
+
+						if m.activeCredential == i {
+							parts = append(parts, activeProfileStyle.Render(profText))
+						} else {
+							parts = append(parts, inactiveProfileStyle.Render(profText))
+						}
+
+					}
+				} else {
+					parts = append(parts, "Press [A] to create a reusable credential.")
+				}
+				content = lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 			default:
 				content = ""
@@ -786,19 +965,19 @@ func (m *model) View() string {
 			if i == m.activeProfileTi {
 				ti.Prompt = "> "
 				modalParts = append(modalParts, ti.View())
+
 			} else {
 				ti.Prompt = ""
 				modalParts = append(modalParts, ti.View())
 
 			}
-
-			modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
-			renderedCols[2] = setFlagModalStyle.Render(modalContent)
 		}
+		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
+		renderedCols[2] = setFlagModalStyle.Render(modalContent)
+
 	case focusTmpProfileCreate:
 		selectedPart := fmt.Sprintf("%s\n%s", m.sv.Name, m.sv.IP)
 		modalParts = append(modalParts, selectedPart)
-
 		for i, ti := range m.tmpProfileInput {
 			if len(ti.Value()) == 0 {
 				ti.PlaceholderStyle = nilProfileTiStyle
@@ -821,6 +1000,44 @@ func (m *model) View() string {
 			modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
 			renderedCols[2] = setFlagModalStyle.Render(modalContent)
 		}
+	case focusCredentialCreate:
+		for i, ti := range m.credInput {
+			if len(ti.Value()) == 0 {
+				ti.PlaceholderStyle = nilProfileTiStyle
+				ti.PromptStyle = nilProfileTiStyle
+				ti.Cursor.Style = nilProfileTiStyle
+			} else {
+				ti.PlaceholderStyle = lipgloss.NewStyle()
+				ti.PromptStyle = lipgloss.NewStyle()
+				ti.Cursor.Style = lipgloss.NewStyle()
+			}
+			if i == m.activeCredentialTi {
+				ti.Prompt = "> "
+				modalParts = append(modalParts, ti.View())
+			} else {
+				ti.Prompt = ""
+				modalParts = append(modalParts, ti.View())
+
+			}
+
+		}
+		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
+		renderedCols[2] = setFlagModalStyle.Render(modalContent)
+	case focusCredentialPicker:
+		if len(m.config.Credentials) > 0 {
+			for i, cred := range m.config.Credentials {
+				var profText = fmt.Sprintf("%s:***", cred.User)
+
+				if m.activeCredential == i {
+					modalParts = append(modalParts, activeProfileStyle.Render(profText))
+				} else {
+					modalParts = append(modalParts, inactiveProfileStyle.Render(profText))
+				}
+
+			}
+		}
+		modalContent := lipgloss.JoinVertical(lipgloss.Left, modalParts...)
+		renderedCols[2] = setFlagModalStyle.Render(modalContent)
 	}
 
 	var helpUI string
@@ -893,12 +1110,25 @@ func addProfile(tiArr []*textinput.Model, config *AppConfig) {
 
 	config.Profiles = append(config.Profiles, newProfile)
 }
+func addCred(tiArr []*textinput.Model, config *AppConfig) {
+	newCred := Credential{
+		User: tiArr[0].Value(),
+		Pass: tiArr[1].Value(),
+	}
+
+	config.Credentials = append(config.Credentials, newCred)
+}
 func editProfile(tiArr []*textinput.Model, profile *Profile) {
 	profile.Name = tiArr[0].Value()
 	profile.IP = tiArr[1].Value()
 	profile.Port = tiArr[2].Value()
 	profile.User = tiArr[3].Value()
 	profile.Pass = tiArr[4].Value()
+
+}
+func editCred(tiArr []*textinput.Model, profile *Credential) {
+	profile.User = tiArr[0].Value()
+	profile.Pass = tiArr[1].Value()
 
 }
 func saveProfilesCmd(ac *AppConfigSetting, config AppConfig) tea.Cmd {
@@ -977,6 +1207,7 @@ func prepareHelpKeys(focus focusArea) []KeyHelp {
 		keys = append(keys, KeyHelp{Icon: "Enter", Desc: "select flag"})
 	case focusProfileCreate, focusTmpProfileCreate:
 		keys = append(keys, KeyHelp{Icon: "↑/↓", Desc: "navigate fields"})
+		keys = append(keys, KeyHelp{Icon: "[CTRL]+A", Desc: "use saved credentials"})
 		keys = append(keys, KeyHelp{Icon: "Enter", Desc: "save profile(fill all fields)"})
 	case focusProfile:
 		keys = append(keys, KeyHelp{Icon: "↑/↓", Desc: "navigate fields"})
@@ -986,4 +1217,14 @@ func prepareHelpKeys(focus focusArea) []KeyHelp {
 	}
 
 	return keys
+}
+
+func useSavedCred(tiArr []*textinput.Model, index int, config *AppConfig) {
+	if index < 0 {
+		tiArr[3].Reset()
+		tiArr[4].Reset()
+	} else {
+		tiArr[3].SetValue(config.Credentials[index].User)
+		tiArr[4].SetValue(config.Credentials[index].Pass)
+	}
 }

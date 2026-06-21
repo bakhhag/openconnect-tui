@@ -36,6 +36,10 @@ type Profile struct {
 	Pass string `json:"pass"`
 }
 
+type Credential struct {
+	User string `json:"user"`
+	Pass string `json:"pass"`
+}
 type AppConfigSetting struct {
 	ConfigDir    string
 	ProfilesPath string
@@ -43,8 +47,9 @@ type AppConfigSetting struct {
 }
 
 type AppConfig struct {
-	Profiles        []Profile `json:"profiles"`
-	LastUsedProfile Profile   `json:"last_profile"`
+	Profiles        []Profile    `json:"profiles"`
+	Credentials     []Credential `json:"credentials"`
+	LastUsedProfile Profile      `json:"last_profile"`
 }
 
 func newAppConfig() *AppConfigSetting {
