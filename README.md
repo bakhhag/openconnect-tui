@@ -83,6 +83,7 @@ no-xmlpost,0,
 
 ### Profiles Tab
 *   `A`: Create a new profile
+    *   `CTRL+A`: Use pre-made credentials  
 *   `E`: Edit the selected profile
     *   `CTRL+A`: Use pre-made credentials  
 *   `D`: Delete the selected profile
