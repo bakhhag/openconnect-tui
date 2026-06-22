@@ -11,6 +11,7 @@ Effortlessly manage VPN profiles and connections while retaining full access to 
 *   **Profile Management:** Create, edit, and select saved VPN profiles.
 *   **IP Resolution:** Resolve domains using built-in lookup tools to choose specific target IPs for connection.
 *   **Flag Configuration:** Visual interface to configure standard OpenConnect command-line flags.
+*   **Credential Saver:** Rapidly configure your connections using your pre-made credentials.
 *   **Native Binary Support:** Interacts directly with your local `openconnect` binary.
 *   **Keyboard-driven UI:** Built using [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
 *   **Cross-Platform Support:** Currently supports Windows, with Linux compatibility coming very soon.
@@ -83,6 +84,7 @@ no-xmlpost,0,
 ### Profiles Tab
 *   `A`: Create a new profile
 *   `E`: Edit the selected profile
+    *   `CTRL+A`: Use pre-made credentials  
 *   `D`: Delete the selected profile
 
 ## Roadmap
