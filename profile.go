@@ -68,6 +68,7 @@ func (ac *AppConfigSetting) loadProfiles() (AppConfig, error) {
 
 	config := AppConfig{
 		Profiles:        []Profile{},
+		Credentials:     []Credential{},
 		LastUsedProfile: Profile{},
 	}
 

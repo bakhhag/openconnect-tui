@@ -562,9 +562,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				switch m.LastFocus {
 				case focusProfileCreate:
-					useSavedCred(m.profileInput, m.activeCredential, &m.config)
+					useSavedCred(m.profileInput, m.activeCredential, &m.config, false)
 				case focusTmpProfileCreate:
-					useSavedCred(m.tmpProfileInput, m.activeCredential, &m.config)
+					useSavedCred(m.tmpProfileInput, m.activeCredential, &m.config, true)
 
 				}
 				m.activeCredential = 0
@@ -1219,12 +1219,20 @@ func prepareHelpKeys(focus focusArea) []KeyHelp {
 	return keys
 }
 
-func useSavedCred(tiArr []*textinput.Model, index int, config *AppConfig) {
-	if index < 0 {
-		tiArr[3].Reset()
-		tiArr[4].Reset()
+func useSavedCred(tiArr []*textinput.Model, index int, config *AppConfig, isTmp bool) {
+	var userTi, passTi *textinput.Model
+	if isTmp {
+		userTi = tiArr[1]
+		passTi = tiArr[2]
 	} else {
-		tiArr[3].SetValue(config.Credentials[index].User)
-		tiArr[4].SetValue(config.Credentials[index].Pass)
+		userTi = tiArr[3]
+		passTi = tiArr[4]
+	}
+	if index < 0 {
+		userTi.Reset()
+		passTi.Reset()
+	} else {
+		userTi.SetValue(config.Credentials[index].User)
+		passTi.SetValue(config.Credentials[index].Pass)
 	}
 }
